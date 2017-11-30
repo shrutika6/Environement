@@ -1000,7 +1000,7 @@ fork
 //        `uvm_error("debug",$sformatf("mwr %h",if0.mHWRITE))
         if0.mHRDATA <= #1 32'h4311;
         #1 wnext=1;
-        waddr = if0.mHADDR;
+        //waddr = if0.mHADDR;
     end
   end
  end
