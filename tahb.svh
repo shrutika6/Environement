@@ -16,24 +16,6 @@ import uvm_pkg::*;
 `uvm_analysis_imp_decl(_set_mem)
 
 
-////////////////////////////////////////////////////
-integer err_count=0;
-class mjerr;
-  static task err(string loc, string msg);
-    begin
-      if(err_count < 10) begin
-      `uvm_error(loc,msg)
-      end
-      if(err_count == 10) begin
-        `uvm_error("Suppressed","10 or more errors seen, reporting suppressed")
-        
-      end
-      err_count = err_count + 1;
-    end
-  endtask : err
-
-endclass : mjerr
-///////////////////////////////////////////////////
 
 // class chkframe template
 class chkframe extends uvm_scoreboard ;
@@ -49,7 +31,7 @@ class chkframe extends uvm_scoreboard ;
   int fpnt;
   reg rb;
   string ohmy;
-string Hello;
+
 
 
    function new(string name="chkframe",uvm_component par=null);
@@ -108,18 +90,14 @@ string Hello;
   if(e.fdata[fpnt] < 2 && rb !== e.fdata[fpnt]) begin
      `uvm_error("error",$sformatf("Expecting a %h, got  %h",e.fdata[fpnt],rb))
      ohmy="";
-	//Hello="";
      for(int ix=0; ix < e.flen; ix=ix+1) begin
          if(ix != fpnt) begin
            ohmy={ohmy,($sformatf("%d %s\n",e.fdata[ix],e.dname[ix]))};
-	//Hello={Hello,($sformatf("%d %s\n",e.fdata[ix],e.dname[ix]))};
          end else begin
            ohmy={ohmy,$sformatf("--->(%d %s)<---\n",e.fdata[ix],e.dname[ix])};
-	//Hello={Hello,$sformatf("--->(%d %s)<---\n",e.fdata[ix],e.dname[ix])};
          end
      end
      `uvm_info("debug",ohmy,UVM_LOW)
-	//`uvm_info("debug",Hello,UVM_LOW)
   end
   fpnt=fpnt+1;
   if(fpnt >= e.flen) fpnt=e.flen-1;
@@ -132,25 +110,20 @@ endclass : chkframe
 // class drv1 template
 class drv1 extends uvm_driver #(Si) ;
   `uvm_component_utils(drv1)
-   uvm_analysis_port #(logic) CheckInitDone; // wait for DDR3 to initialize 
-   uvm_analysis_port #(reg) sreq;      // arbitration request
-  uvm_tlm_analysis_fifo #(reg) sresp; // arbitration respons
-  uvm_analysis_port #(reg) sdone;     // release arbitration
-  reg [1:0] respid;                         // Did we win arbitration???
+
    uvm_analysis_port #(Si) expstart;
    uvm_analysis_port #(Si) expwrite;
    uvm_analysis_port #(Si) set_mem;
    virtual cantintf ci;
-   virtual AHBIF if0;
    virtual AHBIF ai;
 // init code
-string HI;
+
     Si req,expStart;
     int deathcount;
     reg [31:0] dbase,rdata;
     reg [31:0] busy;
     reg [31:0] wv,checkval;
-    logic init_done, write_done;
+    
     task writereg(input reg[31:0] addr,input [31:0] dw);
         #1;
         ai.HADDR <= addr;
@@ -200,10 +173,6 @@ string HI;
      set_mem= new("set_mem",this);
      expstart= new("expstart",this);
      expwrite= new("expwrite",this);
-     sreq = new("sreq",this);
-      sresp = new("sresp",this);
-      sdone = new("sdone",this);
-     CheckInitDone = new("CheckInitDone",this);     //////////////////////////////////////
    endfunction : build_phase
 
 
@@ -216,54 +185,8 @@ string HI;
          `uvm_error("connect", "failed to find interface cantintf in DB")
       end
    endfunction : connect_phase
-   
-
-   /////////////////////////////////////////////
-  task arbitrate();
-    begin
-      sreq.write(1);
-      respid=0;
-      while(respid != 1) begin
-        sresp.get(respid);
-      end
-    end
-  endtask : arbitrate
-  
-  task arb_done();
-    begin
-      sdone.write(1);
-    end
-  endtask : arb_done
 
 
-
-
-   task wait_for_init_done();
-    begin
-      init_done = 1'b0;
-      while(init_done != 1'b1) begin
-        init_done <= if0.init_done;
-        `uvm_info("InitializeDDR", "Waiting for init_done....", UVM_DEBUG)
-        `uvm_info("InitializeDDR", $sformatf("init_done: %b", init_done), UVM_DEBUG)
-        repeat (100) @(if0.cb);
-      end 
-    end 
-  endtask : wait_for_init_done
-  
-  task wait_for_write_done();
-    begin
-      write_done = 1'b0;
-      while(write_done != 1'b1) begin
-        write_done <= if0.write_done;
-        `uvm_info("WriteToDDR3", "Waiting for writes....", UVM_DEBUG)
-        `uvm_info("WriteToDDR3", $sformatf("write_done: %b", write_done), UVM_LOW)
-        repeat (10) @(if0.cb);
-      end 
-    end 
-  endtask : wait_for_write_done
-//////////////////////////////////////////////////////////////////////
-  
-  
 // A run_phase template. Remove the following comments if used
    task run_phase(uvm_phase phase); 
 //           Needs some form forever and waiting statement here
@@ -271,9 +194,7 @@ string HI;
   // my code here
 forever begin  
   seq_item_port.get_next_item(req); // Gets the sequence_item
-`uvm_info("Req code", $sformatf("req code: %d",req.ccode), UVM_LOW)
   dbase=32'hF000_FF00;
-`uvm_info("Req reset", $sformatf("req reset: %d",req.do_reset), UVM_LOW)
   if(req.do_reset) begin
     ci.rst<=1;
     ai.HRESET<=1;
@@ -284,10 +205,8 @@ forever begin
     ai.HBURST <= 0;
     repeat(3) @(posedge(ai.HCLK)) #1; 
     ci.rst<=0;
-    //ci.startXmit<=1;
     ai.HRESET<=0;
     repeat(4) @(posedge(ai.HCLK)) #1;
-`uvm_info("Req busy", $sformatf("req busy: %d",req.wbmbusy), UVM_LOW)
   end else if(req.wbmbusy) begin
     repeat(10)@(posedge(ai.HCLK)) #1;
     readreg(req.caddr,rdata);
@@ -296,44 +215,25 @@ forever begin
        readreg(req.caddr,rdata);
     end
     repeat(100) @(posedge(ai.HCLK)) #1;
-`uvm_info("Req reg", $sformatf("req reg: %d",req.wreg), UVM_LOW)
   end else if(req.wreg) begin
     writereg(req.caddr,req.cdata);
-`uvm_info("Req reg", $sformatf("req mem: %d",req.setmem), UVM_LOW)
   end else if(req.setmem) begin
     set_mem.write(req);
-`uvm_info("Req reg", $sformatf("req reg: %d",req.waitclks), UVM_LOW)
   end else if(req.waitclks != 0) begin
     repeat(req.waitclks) @(posedge(ai.HCLK)) #1;
-`uvm_info("req code", $sformatf("if value received: %b", req.ccode), UVM_LOW)
   end else if(req.ccode != 0) begin
-
     case(req.ccode)
       1: begin
         expStart=new("expStartBM");
         expstart.write(req.cpy(expStart));
-	`uvm_info("debug",HI, UVM_LOW)
         expwrite.write(expStart);
       end
-      2: begin      /////////////////////////////////////////////////////////
-                //ai.HSEL=0;
-                //$display("%b", ai.init_done);
-                wait_for_init_done();
-                `uvm_info("InitializeDDR", $sformatf("init_done: %b", if0.init_done), UVM_DEBUG)
-                CheckInitDone.write(1'b1); // write to write_drv 
-                @(if0.cb) #1;
-              end
-      3: begin
-                wait_for_write_done();
-                `uvm_info("WriteToDDR3", $sformatf("Done Waiting: %b", ai.write_done), UVM_LOW)
-              end       //////////////////////////////////////////////////////////////////////////////
       default:
           `uvm_error("Morris",$sformatf("Unknown Si ccode %d",req.ccode))
     endcase
   end else begin
     expStart = new("expStart");
     expstart.write(req.cpy(expStart));
-`uvm_info("expect start", $sformatf("expect start: %d", expStart), UVM_LOW)
     writereg(dbase+4,req.xmitdata[31:0]);
     writereg(dbase,req.xmitdata[63:32]);
     writereg(dbase+8,{req.quantaDiv,req.propQuanta,req.seg1Quanta,
@@ -389,11 +289,11 @@ class inmon extends uvm_monitor ;
    uvm_tlm_analysis_fifo #(Si) expstart;
    virtual cantintf ci;
 // init code
-    virtual AHBIF ai; // handles the interface items	
+
     Si req;
     Si exp;
 
-string HI;
+
 
    function new(string name="inmon",uvm_component par=null);
      super.new(name,par);
@@ -413,31 +313,14 @@ string HI;
    function void connect_phase(uvm_phase phase);
       if (!uvm_config_db #(virtual cantintf)::get(this, "*","cantintf", ci)) begin
          `uvm_error("connect", "failed to find interface cantintf in DB")
-      end 
-      if (!uvm_config_db #(virtual AHBIF)::get(null, "uvm_test_top","AHBIF", this.ai)) begin   //////////////////////////////////////////////////////
-          mjerr::err("connect", "AHBIF not found");
       end
-      
    endfunction : connect_phase
 
 
 // A run_phase template. Remove the following comments if used
    task run_phase(uvm_phase phase); 
 //           Needs some form forever and waiting statement here
- //begin
-   //   ai.mHGRANT=0; // <= #1 0;
-   //   ai.mHREADY=1; // <= #1 1;
-   //   xfrp1=0;
-   //   fork
-     //   forever begin
-       //  @(ai.cb);
-         // if(xfrp1) begin
-           //`uvm_info("memaccess",$sformatf("[%h] -> %h",addrp1,mem[addrp1]),UVM_LOW)
-            //ai.mHRDATA= #1 mem[addrp1];
-          //end else begin
-           // ai.mHRDATA= #1 0;
-          //end
-        //end
+
  forever begin
     @(posedge(ci.clk)) begin
       if(ci.rst==0 && ci.startXmit==1) begin
@@ -451,7 +334,6 @@ string HI;
         req.format = ci.format;
         req.frameType=ci.frameType;
         regvals.write(req);
-	`uvm_info("debug",HI, UVM_LOW)
         if(expstart.is_empty()) begin
            `uvm_error("error","startXmit received, and no expected data") 
         end else begin
@@ -465,8 +347,7 @@ string HI;
       end
     end
  end
-//join_none
-//end
+
    endtask : run_phase
    function void check_phase(uvm_phase phase);
 
@@ -529,7 +410,7 @@ lastval=0;
 //  The connect phase is to bind messages and interfaces
    function void connect_phase(uvm_phase phase);
    endfunction : connect_phase
-	
+
    // Write function for message regvals
    function void write_regvals(input Si din);
 
@@ -882,7 +763,7 @@ class ahbs extends uvm_monitor ;
   endtask : arbitrate
   
   task arb_done();
-  //sdone.write(2);
+  
   endtask : arb_done
 
 
@@ -918,7 +799,7 @@ class ahbs extends uvm_monitor ;
       fork
         forever begin
           @(ai.HCLK);
-          if(ai.mHBUSREQ /*&&  ai.mHREADY */) begin
+          if(ai.mHBUSREQ && ai.mHREADY) begin
             arbitrate();
             #1;
             ai.mHGRANT=1;
@@ -943,8 +824,8 @@ class slavemon extends uvm_monitor ;
   `uvm_component_utils(slavemon)
 
    uvm_tlm_analysis_fifo #(Si) expwrite;
-  uvm_analysis_imp_set_mem #(Si,slavemon) set_mem;
-   virtual AHBIF if0;
+   uvm_analysis_imp_set_mem #(Si,slavemon) set_mem;
+   virtual AHBIF ai;
 // init code
 
 reg [31:0] mem[reg[31:0]];
@@ -952,7 +833,7 @@ reg wnext;
 reg [31:0] waddr;
 Si exp;
 
-reg [31:0] addrx,datax;
+
 
    function new(string name="slavemon",uvm_component par=null);
      super.new(name,par);
@@ -970,7 +851,7 @@ reg [31:0] addrx,datax;
 
 //  The connect phase is to bind messages and interfaces
    function void connect_phase(uvm_phase phase);
-      if (!uvm_config_db #(virtual AHBIF)::get(this, "*","AHBIF", if0)) begin
+      if (!uvm_config_db #(virtual AHBIF)::get(this, "*","AHBIF", ai)) begin
          `uvm_error("connect", "failed to find interface AHBIF in DB")
       end
    endfunction : connect_phase
@@ -979,7 +860,7 @@ reg [31:0] addrx,datax;
    function void write_set_mem(input Si din);
 
 
-  //mem[din.memaddr]=din.memdata;
+  mem[din.memaddr]=din.memdata;
 
    endfunction : write_set_mem
 
@@ -990,22 +871,22 @@ reg [31:0] addrx,datax;
 
 fork
  forever begin
-  if0.mHREADY <= 1;
-  @(posedge(if0.HCLK));
-  if(if0.mHREADY==1 && if0.mHTRANS[1]==1) begin
-    if( if0.mHWRITE == 0) begin
-        //if0.mHRDATA <= #1 mem[if0.mHADDR];
-//        `uvm_error("debug",$sformatf("%08x <= [%08x]",mem[if0.mHADDR],if0.mHADDR))
+  ai.mHREADY <= 1;
+  @(posedge(ai.HCLK));
+  if(ai.mHREADY==1 && ai.mHTRANS[1]==1) begin
+    if( ai.mHWRITE == 0) begin
+        ai.mHRDATA <= #1 mem[ai.mHADDR];
+//        `uvm_error("debug",$sformatf("%08x <= [%08x]",mem[ai.mHADDR],ai.mHADDR))
     end else begin
-//        `uvm_error("debug",$sformatf("mwr %h",if0.mHWRITE))
-        if0.mHRDATA <= #1 32'h4311;
+//        `uvm_error("debug",$sformatf("mwr %h",ai.mHWRITE))
+        ai.mHRDATA <= #1 32'h4311;
         #1 wnext=1;
-        waddr = if0.mHADDR;
+        waddr = ai.mHADDR;
     end
   end
  end
  forever begin
-    @(posedge(if0.HCLK));
+    @(posedge(ai.HCLK));
     if(wnext) begin
        if(expwrite.is_empty()) begin
           `uvm_error("error",$sformatf("Unexpected write occurred at %08h",waddr)) 
@@ -1014,11 +895,11 @@ fork
          if(exp.caddr !== waddr) begin
            `uvm_error("error",$sformatf("Expecting a write to %08h, received one to %08h",exp.caddr,waddr))
          end
-         if(exp.cdata !== if0.mHWDATA) begin
-            `uvm_error("error",$sformatf("Expecting write data %08h, received %08h",exp.cdata,if0.mHWDATA))
+         if(exp.cdata !== ai.mHWDATA) begin
+            `uvm_error("error",$sformatf("Expecting write data %08h, received %08h",exp.cdata,ai.mHWDATA))
          end
        end
-       mem[addrx]=datax; 
+       mem[waddr]=ai.mHWDATA; 
     end
     wnext=0;
  end
@@ -1036,321 +917,6 @@ join_none
 endclass : slavemon
 
 
-
-
-//--------------------------------------------
-// This is a simple monitor to look at the bus
-// Master signals, and respond with memory data
-//
-class bm_mon extends uvm_monitor;
-
-`uvm_component_utils(bm_mon)
-
-virtual AHBIF if0; // handles the interface items
-
-  uvm_analysis_port #(reg ) sreq;      // arbitration request
-  uvm_tlm_analysis_fifo #(reg) sresp; // arbitration respons
-  uvm_analysis_port #(reg) sdone;     // release arbitration
-  reg [1:0] respid;                         // Did we win arbitration???
-  logic xfrp1;
-  logic [31:0] addrp1;
-  logic [31:0] mem[logic[31:0]];
-
-  function new(string name="bm_mon",uvm_component par=null);
-    super.new(name,par);
-  endfunction : new
-  
-  function void connect_phase(uvm_phase phase);
-      if (!uvm_config_db #(virtual AHBIF)::get(null, "uvm_test_top",
-        "ahbif", this.if0)) begin
-          mjerr::err("connect", "ahbif not found");
-         end 
-  endfunction: connect_phase;
-
-  function void build_phase(uvm_phase phase);
-    logic [31:0] aix;
-    begin
-      sreq = new("bmreq",this);
-      sdone = new("bmdone",this);
-      sresp = new("bmresp",this);
-      for(aix=0; aix < 1024; aix=aix+4) begin
-        mem[32'h123450+aix]=aix+((aix+1)<<8)+((aix+2)<<16)+((aix+3)<<24);
-//        `uvm_info("mem",$sformatf("mem[%h]=%h",32'h123450+aix,mem[32'h123450+aix]),UVM_LOW)
-      end
-      
-    end
-  endfunction : build_phase
-  
-  task arbitrate();
-    begin
-      sreq.write(2);
-      respid=0;
-      while(respid != 2) begin
-        sresp.get(respid);
-      end
-    end
-  endtask : arbitrate
-  
-  task arb_done();
-    begin
-      sdone.write(2);
-    end
-  endtask : arb_done
-
-  
-  task run_phase(uvm_phase phase);
-    begin
-      if0.mHGRANT<= #1 0;
-      if0.mHREADY<= #1 1;
-      xfrp1=0;
-      fork
-//        forever begin
-//          @(if0.cb);
-//          if(xfrp1) begin
-//            `uvm_info("memaccess",$sformatf("[%h] -> %h",addrp1,mem[addrp1]),UVM_LOW)
-//            if0.mHRDATA= #1 mem[addrp1];
-//          end else begin
-//            if0.mHRDATA= #1 0;
-//          end
-//        end
-        forever begin
-          @(if0.cb);
-          if(if0.mHREADY && if0.mHTRANS[1] && if0.mHGRANT) begin
-            //if0.mHRDATA = #1 mem[if0.mHADDR];
-//            addrp1 = #1 if0.mHADDR;
-//            xfrp1= #1 1;
-            if(if0.mHWRITE) begin
-              mjerr::err("bus_master","Master cannot perform write on this project");
-            end
-          end else begin
-//            addrp1=#1 0;
-//            xfrp1=#1 0;
-              if0.mHRDATA=#1 32'h4321;
-          end
-        end
-        forever begin
-          @(if0.cb);
-          if(if0.mHBUSREQ) begin
-            arbitrate();
-            #1;
-            if0.mHGRANT=1;
-            repeat(2) @(if0.cb);
-            #1;
-            while(if0.mHTRANS != HTRANSidle) @(if0.cb);
-            #1; // Now for some outputs
-            if0.mHGRANT=0;
-            arb_done();
-          end
-        end
-      join_none
-    end
-  endtask : run_phase
-endclass : bm_mon
-
-
-//--------------------------------------------
-// This handles arbitration of the bus signals
-// It is a brain dead round robin arbitrator
-//
-class bmarbitrator extends uvm_component;
-
-`uvm_component_utils(bmarbitrator)
-
-reg [1:0] reqid;
-reg [1:0] doneid;
-uvm_tlm_analysis_fifo #(reg) bmreq;
-uvm_tlm_analysis_fifo #(reg) bmdone;
-uvm_analysis_port     #(reg) bmresp;
-
-  function new(string name="bmarb",uvm_component par=null);
-    super.new(name,par);
-  endfunction : new
-
-  function void build_phase(uvm_phase phase);
-    begin
-      bmreq = new("bmreq",this);
-      bmdone = new("bmdone",this);
-      bmresp = new("bmresp",this);
-    end
-  endfunction : build_phase
-  
-  task run_phase(uvm_phase phase);
-    fork
-      forever begin
-        bmreq.get(reqid);
-//        `uvm_info("BM",$sformatf("req %d",reqid),UVM_LOW);
-        bmresp.write(reqid);
-        bmdone.get(doneid);
-//        `uvm_info("BM_done",$sformatf("req_done %d",doneid),UVM_LOW)
-        if(reqid != doneid) begin
-          mjerr::err("internal","arb grant,done mismatch");
-        end
-      end
-    join_none
-  endtask : run_phase
-  
-endclass : bmarbitrator
-
-
-
-
-
-
-
-
-
-
-/////////////////////////////////////////////////////////////////////////////
-class write_drv extends uvm_driver;
-
-    `uvm_component_utils(write_drv)
-    
-    virtual AHBIF if0;
-    
-    uvm_analysis_imp #(logic, write_drv) CheckInitDone_imp;
-    
-    integer fin,res, N;
-    string sin;
-    logic [31:0] addrx,datax;
-    logic cmd, seq_write=0;
-    logic pop_en=0;
-    
-    logic init_done, WaitForIt;
-
-     
-    logic [31:0] wdata_q[$];
-    logic [31:0] wdata,waddr;
-
-    //slave_si wi;
-    
-    function write(logic t);
-        `uvm_info("CheckInitDone_imp", $sformatf("init_done: %b", t), UVM_DEBUG)
-        init_done = t;
-    endfunction : write
-    
-    function new(string name="write_drv", uvm_component parent = null);
-        super.new(name, parent);
-    endfunction : new
-  
-    function void build_phase(uvm_phase phase);
-        CheckInitDone_imp = new("CheckInitDone_imp", this);
-    endfunction : build_phase
-    
-    function void connect_phase(uvm_phase phase);
-        if (!uvm_config_db #(virtual AHBIF)::get(null, "uvm_test_top", "AHBIF", this.if0)) begin
-            mjerr::err("connect", "AHBIF not found");
-        end 
-    endfunction : connect_phase;
-
-    task push_data;
-        while( $fgets(sin,fin)) begin
-            res=$sscanf(sin,"%h",datax);
-            if(res != 32'd0) begin
-                wdata_q.push_back(datax);
-            end
-        //$display("push_data = %h res = %d",datax,res);
-        end
-    endtask : push_data
-    
-      
-    task pop_data;
-        @(if0.cb);
-            //$display("The size of wr data fifo = %0d seq_write= %d %t",N,seq_write,$time);
-            if(wdata_q.size() == N && if0.init_done) begin
-                //if0.mHADDR      <=  32'h0001_0200;
-                //waddr           <=  32'h0001_0200;
-                if0.mHADDR      <= #1 32'h0001_0200;
-                waddr           <=  32'h0001_0200;
-                if0.mHWRITE     <= #1 1'b1;
-                if0.mHTRANS     <= #1 2'b10;
-                seq_write       <=  1'b1;
-            end
-            
-            if (seq_write == 1'b1 && wdata_q.size() != 0) begin
-                //if (if0.mHRESP == 2'b00) begin
-	         if(if0.mHREADY==1) begin
-                    //write_out   <=  write_data.pop_front();
-                    if0.mHADDR  <= #1 waddr + 4;
-                    waddr       <=  waddr + 4;     
-                    if0.mHWDATA <= #1 wdata_q.pop_front();
-                    if0.mHTRANS <= #1 2'b11;
-                    if0.mHWRITE <= #1 1'b1;
-                end
-
-                /*else begin
-                    if0.mHADDR  <=  write_out.addr;
-                    if0.mHWDATA <=  write_out.data;
-                   */ 
-            //`uvm_info("POP_DATA",$sformatf(" Addr: %4h, Data: %4h, HWRITE: %b size = %d",if0.mHADDR, if0.mHWDATA, if0.mHWRITE,wdata_q.size()), UVM_LOW);
-            end 
-            
-            if (wdata_q.size() == 0)begin
-            @(if0.cb);
-                if0.mHTRANS <=  #1 2'b00;
-                if0.mHWRITE <= #1 1'b0;
-             // $display ("here \n");
-            //    seq_write   <=  1'b0;
-            end
-    endtask : pop_data
-
-    task wait_for_something();
-        begin
-        WaitForIt = 1'b0;
-        while(WaitForIt != 1'b1) begin
-            WaitForIt <= if0.init_done;
-            `uvm_info("WaitForIt", "Waiting for init_done....", UVM_DEBUG)
-            `uvm_info("WaitForIt", $sformatf("init_done: %b", WaitForIt), UVM_DEBUG)
-            repeat (2) @(if0.cb);
-        end 
-    end 
-  endtask : wait_for_something
-
-    task run_phase(uvm_phase phase);
-    
-      //   string tstring1="wrt2_sort.txt";
-         string tstring1="write_data.txt";
-        //uvm_cmdline_processor cp=uvm_cmdline_processor::get_inst();
-        begin
-            //wi = slave_si::type_id::create("wi");
-          //  cp.get_arg_value("+272test=",tstring1);
-            `uvm_info("write_file",$sformatf(tstring1),UVM_LOW)
-            fin=$fopen(tstring1,"r");
-            if(fin == 0) begin
-                $display("Could not open write.txt Simulation failed to start");
-                $finish;
-            end
-            
-            push_data;
-            
-            wait_for_something();
-
-            N = wdata_q.size();
-            
-            while (wdata_q.size() != 0) begin 
-                
-                pop_data;
-                `uvm_info("POP_DATA_WHILE_AFTER_POP",$sformatf(" Addr: %4h, Data: %4h, HWRITE: %b",if0.HADDR, if0.HWDATA, if0.HWRITE), UVM_DEBUG);
-            end 
-    
-            
-            //$display("wdata: %4h, waddr: %4h", wdata, waddr);
-            /*
-            while($fgets(wdata,waddr)) begin
-                start_item(wi);
-                wi.wdata <= wdata;
-                wi.waddr <= waddr;
-                finish_item(wi);
-            end
-            */
-        end
-        $fclose(fin);
-    
-    endtask : run_phase
-
-endclass : write_drv 
-//////////////////////////////////////////////////////////////////////////////////////////
-
-
 // class agent1 template
 class agent1 extends uvm_agent ;
   `uvm_component_utils(agent1)
@@ -1360,14 +926,12 @@ class agent1 extends uvm_agent ;
    pfind pf ;
    bittime btime ;
    slavemon smon ;
-   bm_mon bm;
-   bmarbitrator bma;
    drv1 d1 ;
    expframe expf ;
    chkframe cframe ;
    ahbs ahbmemslave ;
    datamon dmon ;
-   write_drv write_drv_h ; 
+
 
    function new(string name="agent1",uvm_component par=null);
      super.new(name,par);
@@ -1380,8 +944,6 @@ class agent1 extends uvm_agent ;
      super.build_phase(phase);
       ahbmemslave = ahbs::type_id::create("ahbmemslave",this);
       dmon = datamon::type_id::create("dmon",this);
-      //bm = bm_mon::type_id::create("bm_mon",this);
-     // bma = bmarbitrator::type_id::create("bmarb",this);
       expf = expframe::type_id::create("expf",this);
       cframe = chkframe::type_id::create("cframe",this);
       pf = pfind::type_id::create("pf",this);
@@ -1390,8 +952,6 @@ class agent1 extends uvm_agent ;
       d1 = drv1::type_id::create("d1",this);
       sqr1 = seqr1::type_id::create("sqr1",this);
       imon = inmon::type_id::create("imon",this);
-      write_drv_h = write_drv::type_id::create("write_drv_h", this);
-      //file0.bm = bm;
    endfunction : build_phase
 
 
@@ -1400,15 +960,8 @@ class agent1 extends uvm_agent ;
       pf.startbit.connect(cframe.startbit);
       d1.set_mem.connect(smon.set_mem);
       d1.expstart.connect(imon.expstart.analysis_export);
-      //d1.sreq.connect(bma.bmreq.analysis_export);
       dmon.dbit.connect(pf.dbit.analysis_export);
       dmon.dbit.connect(btime.dbit.analysis_export);
-      
-     // bm.sreq.connect(bma.bmreq.analysis_export);
-     // bm.sdone.connect(bma.bmdone.analysis_export);
-    // d1.sdone.connect(bma.bmdone.analysis_export);
-    // bma.bmresp.connect(d1.sresp.analysis_export);
-    //  bma.bmresp.connect(bm.sresp.analysis_export);
       cframe.drivedin.connect(dmon.drivedin);
       imon.regvals.connect(expf.regvals);
       imon.regvals.connect(pf.regvals);
@@ -1417,7 +970,6 @@ class agent1 extends uvm_agent ;
       pf.rbit.connect(cframe.rbit.analysis_export);
       d1.expwrite.connect(smon.expwrite.analysis_export);
       d1.seq_item_port.connect(sqr1.seq_item_export);
-      d1.CheckInitDone.connect(write_drv_h.CheckInitDone_imp); 
    endfunction : connect_phase
 endclass : agent1
 
@@ -1454,7 +1006,7 @@ class seq1 extends uvm_sequence #(Si) ;
 
 // init code
 
-  Si r,w, si;
+  Si r,w;
   reg [31:0] oldblk,newblk,baseblk;
   
   task wreg(reg [31:0] addr, reg [31:0] dataval);
@@ -1528,46 +1080,10 @@ class seq1 extends uvm_sequence #(Si) ;
       super.new(name);
    endfunction : new
 
-   
-   //////////////////////////////////////////////////////////
-   task doreset();
-    begin
-	 
-      //add
-      repeat(3) begin
-        start_item(si);
-        finish_item(si);
-      end
-      
-        start_item(si);
-        si.init_reset();
-        si.action=Si::InitializeDDR;
-        finish_item(si);
-        
-        repeat(3) begin
-        start_item(si);
-        finish_item(si);
-        end 
-        
-        start_item(si);
-        //si.init_reset();
-        si.action=Si::WriteToDDR3;
-        finish_item(si);
-        
-        repeat(3) begin
-        start_item(si);
-        finish_item(si);
-        end
-        
-      //end
-      
-    end
-  endtask : doreset 
-  ///////////////////////////////////////////////////////////////////////////////////
-  
-  
+
 // A sequence body template. put tests there
    task body;
+
 
 //  `uvm_info("prelimary","This is a preliminary test bench",UVM_LOW)
   r=Si::type_id::create("td");
@@ -1662,15 +1178,13 @@ class seq1 extends uvm_sequence #(Si) ;
 endclass : seq1
 
 
-
-
 // class t1 template
 class t1 extends uvm_test ;
   `uvm_component_utils(t1)
 
    env1 e1 ;
    seq1 s1 ;
-   //bm_mon bm;
+
 
    function new(string name="t1",uvm_component par=null);
      super.new(name,par);
@@ -1683,8 +1197,6 @@ class t1 extends uvm_test ;
      super.build_phase(phase);
       e1 = env1::type_id::create("e1",this);
       s1 = seq1::type_id::create("s1",this);
-      //bm = bm_mon::type_id::create("bm_mon",this);
-      //s1.bm=bm;
    endfunction : build_phase
 
 

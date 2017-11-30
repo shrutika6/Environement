@@ -26,6 +26,7 @@ logic [63:0] tck_ddr =  938;
 logic [63:0] tck_ahb = 10000;
 cantintf ci();
 AHBIF ai();
+AHBIF if0();
 DDR3_sdram D1();
 DDR3_sdram D2();
 /*
@@ -40,7 +41,7 @@ initial begin
   ai.HCLK=1;
   repeat(2000000) begin
 
-   #(tck_ahb/2) #5 ci.clk=~ci.clk;
+    #5 ci.clk=~ci.clk;
      #(tck_ahb/2) ai.HCLK=~ai.HCLK;
   end
   $display("Used up the clocks");
@@ -60,17 +61,20 @@ end
 initial begin
   ci.rst=0;
   ai.HRESET=0;
+  if0.HRESET=0;
 end
 
 initial
   begin
     ai.mHGRANT=0;
+    if0.mHGRANT=0;
   end
 
 initial begin
     #0;
     uvm_config_db #(virtual cantintf)::set(null, "*", "cantintf" , ci);
     uvm_config_db #(virtual AHBIF)::set(null,"*", "AHBIF",ai);
+    uvm_config_db #(virtual AHBIF)::set(null,"*", "AHBIF",if0);
     run_test("t1");
     $display("Test came back to me");
     #100;
